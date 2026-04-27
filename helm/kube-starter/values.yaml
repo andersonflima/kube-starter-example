@@ -1,0 +1,34 @@
+nameOverride: ""
+fullnameOverride: ""
+
+frontend:
+  replicaCount: 1
+  image:
+    repository: kube-starter-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+
+backend:
+  replicaCount: 1
+  image:
+    repository: kube-starter-backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: kube-starter.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+

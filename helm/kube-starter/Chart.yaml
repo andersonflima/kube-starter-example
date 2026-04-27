@@ -1,0 +1,7 @@
+apiVersion: v2
+name: kube-starter
+description: Full-stack starter com frontend, backend e configuracao Kubernetes
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+
