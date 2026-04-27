@@ -1,12 +1,31 @@
 # Kube Starter
 
-Exemplo simples com:
+Exemplo full-stack com:
 
 - backend em `Express + TypeScript`
 - frontend em `React + Vite`
-- `Dockerfile` para os dois projetos
-- `docker-compose.yml` para subir localmente
+- `Dockerfile` para backend e frontend
+- `docker-compose.yml` para ambiente local integrado
 - chart Helm para Kubernetes
+- exemplo de fluxo GitOps com Argo CD
+
+## Objetivo
+
+Este repositorio existe para mostrar, no mesmo projeto, quatro formas diferentes de empacotar e operar uma aplicacao:
+
+- `Docker`: build e execucao manual de cada servico
+- `Docker Compose`: sobe a stack local inteira com rede compartilhada
+- `Helm`: instala a aplicacao no Kubernetes a partir de um chart
+- `Argo CD`: aplica GitOps em cima do chart Helm versionado no Git
+
+## Mapa da documentacao
+
+- guia principal: [README.md](/Users/andersonespindola/snippets/kube/README.md)
+- workflows e escolha de ferramenta: [docs/workflows-and-tooling.md](/Users/andersonespindola/snippets/kube/docs/workflows-and-tooling.md)
+- fundamentos do Kubernetes: [docs/kubernetes-fundamentals.md](/Users/andersonespindola/snippets/kube/docs/kubernetes-fundamentals.md)
+- GitOps com Argo CD: [docs/argocd-gitops.md](/Users/andersonespindola/snippets/kube/docs/argocd-gitops.md)
+- comandos de debug e operacao: [docs/debugging-cheatsheet.md](/Users/andersonespindola/snippets/kube/docs/debugging-cheatsheet.md)
+- exemplo de `Application` do Argo CD: [argocd/kube-starter-application.yaml](/Users/andersonespindola/snippets/kube/argocd/kube-starter-application.yaml)
 
 ## Endpoints
 
@@ -14,11 +33,22 @@ Exemplo simples com:
 - `GET /api/message`
 - `GET /api/stats`
 
+## Estrutura do projeto
+
+```text
+.
+|-- backend/
+|-- frontend/
+|-- helm/kube-starter/
+|-- argocd/
+`-- docs/
+```
+
 ## Arquitetura da solucao
 
 ### Visao geral
 
-O frontend serve a interface para o navegador e encaminha chamadas `/api` para o backend. O backend concentra a logica HTTP e responde os 3 endpoints da aplicacao.
+O frontend serve a interface para o navegador e faz proxy de `/api` para o backend. O backend concentra a logica HTTP e responde os tres endpoints da aplicacao.
 
 ### Fluxo local com Docker ou Docker Compose
 
@@ -53,22 +83,93 @@ O frontend serve a interface para o navegador e encaminha chamadas `/api` para o
 [ Pod do Backend ]
 ```
 
+### Fluxo com Argo CD + Helm + Kubernetes
+
+```text
+[ Developer ]
+      |
+      v
+[ Git push ]
+      |
+      v
+[ GitHub repository ]
+      |
+      v
+[ Argo CD ]
+      |
+      v
+[ Helm chart em helm/kube-starter ]
+      |
+      v
+[ kube-apiserver ]
+      |
+      v
+[ etcd / controllers / scheduler / kubelet ]
+      |
+      v
+[ Pods e Services em execucao ]
+```
+
 ### Responsabilidades
 
-- frontend: entrega a UI e faz proxy das chamadas `/api`
+- frontend: entrega a UI e consome a API
 - backend: responde `health`, `message` e `stats`
 - docker: empacota cada servico como imagem
-- docker compose: sobe os servicos juntos no ambiente local
-- helm: instala e versiona os recursos no cluster Kubernetes
+- docker compose: sobe os dois servicos juntos localmente
+- helm: define os manifests parametrizados da aplicacao no cluster
+- argo cd: observa o Git e reconcilia o cluster automaticamente
+
+## Diferencas entre Docker, Docker Compose, Helm e Argo CD
+
+### Docker
+
+Use `Docker` quando voce quer montar e executar cada servico manualmente.
+
+- escopo: container individual
+- entrada: `Dockerfile`
+- estado desejado: controlado por voce no terminal
+- melhor uso: teste isolado de backend ou frontend
+
+### Docker Compose
+
+Use `Docker Compose` quando voce quer um ambiente local integrado sem precisar subir os containers um por um.
+
+- escopo: varios containers relacionados
+- entrada: `docker-compose.yml`
+- estado desejado: controlado por um arquivo unico local
+- melhor uso: desenvolvimento local e smoke test da stack
+
+### Helm
+
+Use `Helm` quando voce quer empacotar manifests Kubernetes com valores configuraveis.
+
+- escopo: aplicacao no Kubernetes
+- entrada: chart Helm
+- estado desejado: aplicado quando voce executa `helm install` ou `helm upgrade`
+- melhor uso: deploy manual ou automatizado no cluster
+
+### Argo CD
+
+Use `Argo CD` quando voce quer GitOps de verdade: o repositorio Git vira a fonte de verdade e o cluster e reconciliado continuamente.
+
+- escopo: operacao continua no Kubernetes
+- entrada: manifests puros, Kustomize ou Helm versionados no Git
+- estado desejado: mantido automaticamente pelo controller
+- melhor uso: homologacao, staging e producao com trilha auditavel
+
+### Resumo pratico
+
+- `Docker` nao substitui `Compose`: ele e a base de imagem e execucao individual.
+- `Docker Compose` nao substitui `Helm`: ele resolve ambiente local, nao cluster Kubernetes.
+- `Helm` nao substitui `Argo CD`: Helm empacota e instala; Argo CD observa Git e reconcilia continuamente.
+- `Argo CD` pode usar `Helm` como fonte. Neste projeto, essa e a combinacao mais natural para GitOps.
 
 ## Componentes principais do Kubernetes
 
-Quando voce executa um `helm upgrade --install`, o Helm envia manifests para o cluster. A partir dai, cada componente do Kubernetes assume uma responsabilidade diferente.
-
-### Fluxo simplificado
+Quando voce instala este projeto com `Helm` ou deixa o `Argo CD` sincronizar o chart, o fluxo passa por estes componentes:
 
 ```text
-[ Helm / kubectl ]
+[ Helm ou Argo CD ]
         |
         v
 [ kube-apiserver ]
@@ -77,141 +178,113 @@ Quando voce executa um `helm upgrade --install`, o Helm envia manifests para o c
 [ etcd ]
         |
         v
-[ controller-manager ] ---> garante o estado desejado
+[ controller-manager ]
         |
         v
-[ scheduler ] ---> escolhe em qual node o Pod vai rodar
+[ scheduler ]
         |
         v
-[ kubelet ] ---> cria e monitora o Pod no node
+[ kubelet ]
 ```
 
-### Diferenca entre eles
+- `kube-apiserver`: porta de entrada do cluster. Recebe, valida e expoe a API.
+- `etcd`: banco chave-valor que persiste o estado do cluster.
+- `controller-manager`: reconcilia estado desejado e estado atual.
+- `scheduler`: escolhe em qual node cada Pod pendente vai rodar.
+- `kubelet`: agente do node que materializa os Pods em execucao.
 
-- `kube-apiserver`: porta de entrada do cluster. Recebe requisicoes, valida manifests, aplica regras de autenticacao/autorizacao e expoe a API do Kubernetes.
-- `etcd`: banco chave-valor do cluster. Guarda o estado desejado e o estado atual persistido, como `Deployments`, `Services`, `Secrets` e metadados.
-- `controller-manager`: conjunto de controllers que compara estado desejado com estado atual e tenta corrigir divergencias. Exemplo: se um `Deployment` pede 2 replicas e existe 1, ele cria outra.
-- `scheduler`: decide em qual node um Pod pendente deve ser alocado, levando em conta recursos, afinidade, taints, tolerations e restricoes.
-- `kubelet`: agente que roda em cada node. Recebe a decisao do control plane, conversa com o runtime de containers e garante que os Pods daquele node estejam de pe.
-
-### Como pensar na pratica
-
-- `kube-apiserver` e `etcd` pertencem ao centro de controle do cluster.
-- `controller-manager` e `scheduler` transformam declaracao em execucao.
-- `kubelet` e quem materializa isso no node.
-
-### Exemplo com este projeto
-
-Quando voce instala este chart:
-
-- o `Helm` envia `Deployment` e `Service` para o `kube-apiserver`
-- o `kube-apiserver` valida e persiste isso no `etcd`
-- o `controller-manager` percebe que frontend e backend precisam existir
-- o `scheduler` escolhe os nodes onde cada Pod sera executado
-- o `kubelet` de cada node baixa a imagem e sobe os containers
+Explicacao detalhada: [docs/kubernetes-fundamentals.md](/Users/andersonespindola/snippets/kube/docs/kubernetes-fundamentals.md)
 
 ## Diferenca entre Pod, Deployment, Service e Ingress
 
-Esses sao os objetos mais importantes para entender o chart deste projeto.
-
-### Visao curta
-
-- `Pod`: menor unidade executavel do Kubernetes
-- `Deployment`: controlador que garante Pods rodando na quantidade desejada
+- `Pod`: unidade minima executavel
+- `Deployment`: garante replicas, rollout e recriacao de Pods
 - `Service`: endpoint estavel para acessar Pods
-- `Ingress`: camada HTTP/HTTPS de entrada para trafego externo
-
-### Como eles se relacionam
+- `Ingress`: entrada HTTP/HTTPS na frente de um ou mais Services
 
 ```text
-[ Usuario / Navegador ]
-          |
-          v
+[ Usuario ]
+    |
+    v
 [ Ingress opcional ]
-          |
-          v
+    |
+    v
 [ Service ]
-          |
-          v
+    |
+    v
 [ Pods ]
-          ^
-          |
+    ^
+    |
 [ Deployment ]
 ```
 
-### Diferenca entre eles
-
-- `Pod`: e onde o container realmente roda. Se um Pod morrer, ele pode ser recriado com outro nome e outro IP.
-- `Deployment`: nao expoe trafego diretamente. Ele declara quantas replicas devem existir e gerencia rollout, restart e atualizacao de Pods.
-- `Service`: resolve o problema de IP dinamico dos Pods. Ele oferece um nome fixo e balanceia trafego entre os Pods selecionados por label.
-- `Ingress`: define regras de entrada HTTP/HTTPS, como host e path, e normalmente fica na frente de um `Service`, nao de Pods diretamente.
-
-### Como pensar na pratica
-
-- se voce quer rodar container, pensa em `Pod`
-- se voce quer manter Pods vivos e versionar rollout, pensa em `Deployment`
-- se voce quer comunicacao interna estavel, pensa em `Service`
-- se voce quer acesso externo web, pensa em `Ingress`
-
-### Exemplo com este projeto
-
-- o chart cria um `Deployment` para o `frontend`
-- o chart cria um `Deployment` para o `backend`
-- cada `Deployment` cria e gerencia seus `Pods`
-- o chart cria um `Service` para o frontend e outro para o backend
-- o `Ingress`, quando habilitado, aponta para o `Service` do frontend
-- o frontend acessa o backend pelo nome do `Service` interno
-
-## Diferencas entre Docker, Docker Compose e Helm
-
-### Docker
-
-Use `Docker` quando quiser construir e rodar cada servico manualmente, com controle fino sobre imagem, container, rede e portas.
-
-- escopo: container individual
-- foco: build e execucao manual
-- melhor uso: testes isolados de backend ou frontend
-
-### Docker Compose
-
-Use `Docker Compose` quando quiser subir backend e frontend juntos no ambiente local, com rede interna entre os servicos e configuracao centralizada em um unico arquivo.
-
-- escopo: varios containers relacionados
-- foco: ambiente local integrado
-- melhor uso: desenvolvimento e validacao local da stack inteira
-
-### Helm
-
-Use `Helm` quando quiser instalar a aplicacao em um cluster Kubernetes com objetos versionados, parametrizacao por `values.yaml` e suporte a upgrade/rollback.
-
-- escopo: aplicacao no Kubernetes
-- foco: empacotamento e deploy em cluster
-- melhor uso: homologacao, staging e producao
+Explicacao detalhada: [docs/kubernetes-fundamentals.md](/Users/andersonespindola/snippets/kube/docs/kubernetes-fundamentals.md)
 
 ## Comandos
 
+### 0. Rodando com kind
+
+Criando um cluster local:
+
+```bash
+kind create cluster --name kube-starter
+kubectl config use-context kind-kube-starter
+```
+
+Carregando as imagens locais no node do kind:
+
+```bash
+kind load docker-image kube-backend:latest --name kube-starter
+kind load docker-image kube-frontend:latest --name kube-starter
+```
+
+Verificando o cluster:
+
+```bash
+kubectl get nodes
+```
+
+Removendo o cluster ao final:
+
+```bash
+kind delete cluster --name kube-starter
+```
+
 ### 1. Rodando com Docker
 
-Build das imagens:
+Build do backend:
 
 ```bash
 docker build -t kube-backend ./backend
+```
+
+Build do frontend:
+
+```bash
 docker build -t kube-frontend ./frontend
 ```
 
-Criando uma rede local para os containers:
+Criando uma rede local:
 
 ```bash
 docker network create kube-starter
 ```
 
-Subindo o backend:
+Subindo backend:
 
 ```bash
 docker run -d --name backend --network kube-starter -p 3000:3000 kube-backend
 ```
 
-Subindo o frontend apontando para o backend:
+Verificando backend:
+
+```bash
+curl http://localhost:3000/api/health
+curl http://localhost:3000/api/message
+curl http://localhost:3000/api/stats
+```
+
+Subindo frontend:
 
 ```bash
 docker run -d --name frontend --network kube-starter \
@@ -219,7 +292,14 @@ docker run -d --name frontend --network kube-starter \
   -p 8080:80 kube-frontend
 ```
 
-Parando e removendo os containers:
+Verificando frontend:
+
+```bash
+curl http://localhost:8080
+curl http://localhost:8080/api/health
+```
+
+Parando e removendo:
 
 ```bash
 docker stop frontend backend
@@ -229,42 +309,58 @@ docker network rm kube-starter
 
 ### 2. Rodando com Docker Compose
 
+Subindo com portas padrao:
+
 ```bash
 docker compose up --build
 ```
 
-Frontend: `http://localhost:8080`  
-Backend: `http://localhost:3000`
-
-Para rodar em background:
+Rodando em background:
 
 ```bash
 docker compose up --build -d
 ```
 
-Para parar tudo:
+Parando:
 
 ```bash
 docker compose down
 ```
 
-Observacao: se a porta `3000` ou `8080` ja estiver ocupada na sua maquina, ajuste o mapeamento no [docker-compose.yml](/Users/andersonespindola/snippets/kube/docker-compose.yml).
+Frontend: `http://localhost:8080`  
+Backend: `http://localhost:3000`
+
+Subindo com portas alternativas sem editar o arquivo:
+
+```bash
+BACKEND_PORT=3002 FRONTEND_PORT=9081 docker compose up --build -d
+```
+
+Verificando a stack:
+
+```bash
+curl http://localhost:3002/api/health
+curl http://localhost:9081
+curl http://localhost:9081/api/stats
+```
+
+Observacao: o [docker-compose.yml](/Users/andersonespindola/snippets/kube/docker-compose.yml) agora aceita `BACKEND_PORT` e `FRONTEND_PORT` para evitar conflito local.
 
 ### 3. Rodando com Helm
 
-Renderizando os manifests localmente:
+Renderizando manifests:
 
 ```bash
 helm template kube-starter ./helm/kube-starter
 ```
 
-Validando o chart:
+Validando chart:
 
 ```bash
 helm lint ./helm/kube-starter
 ```
 
-Instalando ou atualizando no cluster:
+Instalando:
 
 ```bash
 helm upgrade --install kube-starter ./helm/kube-starter
@@ -288,10 +384,127 @@ helm upgrade --install kube-starter ./helm/kube-starter \
   --set ingress.hosts[0].host=kube-starter.local
 ```
 
-Desinstalando do cluster:
+Removendo:
 
 ```bash
 helm uninstall kube-starter
+```
+
+Fluxo completo de validacao local do chart:
+
+```bash
+helm lint ./helm/kube-starter
+helm template kube-starter ./helm/kube-starter
+```
+
+Fluxo completo em cluster:
+
+```bash
+helm upgrade --install kube-starter ./helm/kube-starter
+kubectl get deployments,services,ingress
+kubectl get pods
+```
+
+Fluxo completo em kind:
+
+```bash
+kind create cluster --name kube-starter
+kind load docker-image kube-backend:latest --name kube-starter
+kind load docker-image kube-frontend:latest --name kube-starter
+helm upgrade --install kube-starter ./helm/kube-starter \
+  --namespace kube-starter \
+  --create-namespace
+kubectl rollout status deployment/kube-starter-kube-starter-backend -n kube-starter
+kubectl rollout status deployment/kube-starter-kube-starter-frontend -n kube-starter
+kubectl port-forward service/kube-starter-kube-starter-frontend -n kube-starter 9082:80
+```
+
+### 4. Rodando com Argo CD
+
+Instalando Argo CD no cluster:
+
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+```
+
+Acessando localmente a UI:
+
+```bash
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+```
+
+Obtendo a senha inicial:
+
+```bash
+argocd admin initial-password -n argocd
+```
+
+Fazendo login no CLI:
+
+```bash
+argocd login localhost:8080 --insecure
+```
+
+Aplicando a `Application` deste projeto:
+
+```bash
+kubectl apply -f argocd/kube-starter-application.yaml
+```
+
+Verificando sincronizacao:
+
+```bash
+kubectl get applications -n argocd
+argocd app get kube-starter
+argocd app sync kube-starter
+argocd app wait kube-starter --health --sync
+```
+
+Fluxo completo em kind:
+
+```bash
+kind create cluster --name kube-starter
+kind load docker-image kube-backend:latest --name kube-starter
+kind load docker-image kube-frontend:latest --name kube-starter
+kubectl create namespace argocd
+kubectl apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl rollout status deployment/argocd-server -n argocd --timeout=300s
+kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=300s
+kubectl rollout status statefulset/argocd-application-controller -n argocd --timeout=300s
+kubectl apply -f argocd/kube-starter-application.yaml
+kubectl get application kube-starter -n argocd
+```
+
+Explicacao detalhada: [docs/argocd-gitops.md](/Users/andersonespindola/snippets/kube/docs/argocd-gitops.md)
+
+## Matriz de validacao
+
+Os fluxos abaixo foram validados localmente neste repositorio:
+
+- `backend`: `npm run build`
+- `frontend`: `npm run build`
+- `Docker`: `docker build` do backend e do frontend, seguido de teste real com `docker run`
+- `Docker Compose`: `docker compose config` e `docker compose build`
+- `Helm`: `helm lint` e `helm template`
+- `kind + Helm`: cluster criado, imagens carregadas, release instalado e endpoints testados
+- `kind + Argo CD`: Argo CD instalado, `Application` sincronizada e endpoints testados
+
+Limitacao importante:
+
+- o fluxo `Argo CD` depende de acesso do cluster ao GitHub para buscar o repositorio remoto
+- antes do primeiro push com as correcoes do chart, a validacao local usou tags compatíveis tambem para provar o funcionamento do ciclo completo
+
+Como repetir a validacao manual:
+
+```bash
+cd backend && npm run build
+cd ../frontend && npm run build
+cd .. && docker compose build
+helm lint ./helm/kube-starter
+helm template kube-starter ./helm/kube-starter
 ```
 
 ## Desenvolvimento
@@ -311,3 +524,38 @@ cd frontend
 npm install
 npm run dev
 ```
+
+## Exemplos rapidos de uso
+
+### Testando o backend localmente
+
+```bash
+curl http://localhost:3000/api/health
+curl http://localhost:3000/api/message
+curl http://localhost:3000/api/stats
+```
+
+### Renderizando a home do frontend publicado em container
+
+```bash
+curl http://localhost:8080
+```
+
+### Inspecionando objetos do release Helm
+
+```bash
+kubectl get deployments,services,ingress
+```
+
+### Inspecionando uma app no Argo CD
+
+```bash
+kubectl describe application kube-starter -n argocd
+```
+
+## Proximos documentos
+
+- detalhes de quando escolher cada ferramenta: [docs/workflows-and-tooling.md](/Users/andersonespindola/snippets/kube/docs/workflows-and-tooling.md)
+- fundamentos do cluster: [docs/kubernetes-fundamentals.md](/Users/andersonespindola/snippets/kube/docs/kubernetes-fundamentals.md)
+- GitOps e Argo CD: [docs/argocd-gitops.md](/Users/andersonespindola/snippets/kube/docs/argocd-gitops.md)
+- troubleshooting: [docs/debugging-cheatsheet.md](/Users/andersonespindola/snippets/kube/docs/debugging-cheatsheet.md)
