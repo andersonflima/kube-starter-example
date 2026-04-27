@@ -5,7 +5,7 @@ services:
     environment:
       PORT: "3000"
     ports:
-      - "3000:3000"
+      - "${BACKEND_PORT:-3000}:3000"
 
   frontend:
     build:
@@ -15,5 +15,4 @@ services:
     environment:
       BACKEND_SERVICE_URL: http://backend:3000
     ports:
-      - "8080:80"
-
+      - "${FRONTEND_PORT:-8080}:80"

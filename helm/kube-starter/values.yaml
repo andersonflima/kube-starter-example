@@ -4,7 +4,7 @@ fullnameOverride: ""
 frontend:
   replicaCount: 1
   image:
-    repository: kube-starter-frontend
+    repository: kube-frontend
     tag: latest
     pullPolicy: IfNotPresent
   service:
@@ -14,7 +14,7 @@ frontend:
 backend:
   replicaCount: 1
   image:
-    repository: kube-starter-backend
+    repository: kube-backend
     tag: latest
     pullPolicy: IfNotPresent
   service:
@@ -31,4 +31,3 @@ ingress:
         - path: /
           pathType: Prefix
   tls: []
-
