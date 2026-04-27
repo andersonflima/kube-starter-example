@@ -58,6 +58,21 @@ Este repositorio mostra, no mesmo projeto, quatro formas diferentes de empacotar
 `-- docs/
 ```
 
+## Arquitetura da solucao
+
+### Visao geral
+
+O frontend serve a interface para o navegador e faz proxy de `/api` para o backend. O backend concentra a logica HTTP e responde os tres endpoints da aplicacao.
+
+### Responsabilidades
+
+- frontend: entrega a UI e consome a API
+- backend: responde `health`, `message` e `stats`
+- docker: empacota cada servico como imagem
+- docker compose: sobe os dois servicos juntos localmente
+- helm: define os manifests parametrizados da aplicacao no cluster
+- argo cd: observa o Git e reconcilia o cluster automaticamente
+
 ## Endpoints
 
 - `GET /api/health`
@@ -411,34 +426,42 @@ Mais comandos:
 
 ### Docker
 
+- Use `Docker` quando voce quer montar e executar cada servico manualmente.
 - escopo: container individual
 - entrada: `Dockerfile`
+- estado desejado: controlado por voce no terminal
 - melhor uso: teste isolado de backend ou frontend
 
 ### Docker Compose
 
+- Use `Docker Compose` quando voce quer um ambiente local integrado sem precisar subir os containers um por um.
 - escopo: varios containers relacionados
 - entrada: `docker-compose.yml`
+- estado desejado: controlado por um arquivo unico local
 - melhor uso: desenvolvimento local e smoke test da stack
 
 ### Helm
 
+- Use `Helm` quando voce quer empacotar manifests Kubernetes com valores configuraveis.
 - escopo: aplicacao no Kubernetes
 - entrada: chart Helm
+- estado desejado: aplicado quando voce executa `helm install` ou `helm upgrade`
 - melhor uso: deploy manual ou automatizado no cluster
 
 ### Argo CD
 
+- Use `Argo CD` quando voce quer GitOps de verdade: o repositorio Git vira a fonte de verdade e o cluster e reconciliado continuamente.
 - escopo: operacao continua no Kubernetes
 - entrada: Git como fonte de verdade
+- estado desejado: mantido automaticamente pelo controller
 - melhor uso: GitOps com reconciliacao continua
 
 Resumo pratico:
 
-- `Docker` nao substitui `Compose`
-- `Docker Compose` nao substitui `Helm`
-- `Helm` nao substitui `Argo CD`
-- `Argo CD` pode usar `Helm` como fonte
+- `Docker` nao substitui `Compose`: ele e a base de imagem e execucao individual
+- `Docker Compose` nao substitui `Helm`: ele resolve ambiente local, nao cluster Kubernetes
+- `Helm` nao substitui `Argo CD`: Helm empacota e instala; Argo CD observa Git e reconcilia continuamente
+- `Argo CD` pode usar `Helm` como fonte. Neste projeto, essa e a combinacao mais natural para GitOps
 
 ## Arquitetura
 
@@ -496,6 +519,9 @@ Resumo pratico:
 [ kube-apiserver ]
       |
       v
+[ etcd / controllers / scheduler / kubelet ]
+      |
+      v
 [ Pods e Services em execucao ]
 ```
 
@@ -503,18 +529,55 @@ Resumo pratico:
 
 ### Componentes principais
 
-- `kube-apiserver`: entrada da API do cluster
-- `etcd`: persistencia do estado
-- `controller-manager`: reconciliacao
-- `scheduler`: escolha do node
-- `kubelet`: execucao no node
+Quando voce instala este projeto com `Helm` ou deixa o `Argo CD` sincronizar o chart, o fluxo passa por estes componentes:
+
+```text
+[ Helm ou Argo CD ]
+        |
+        v
+[ kube-apiserver ]
+        |
+        v
+[ etcd ]
+        |
+        v
+[ controller-manager ]
+        |
+        v
+[ scheduler ]
+        |
+        v
+[ kubelet ]
+```
+
+- `kube-apiserver`: porta de entrada do cluster. Recebe, valida e expoe a API
+- `etcd`: banco chave-valor que persiste o estado do cluster
+- `controller-manager`: reconcilia estado desejado e estado atual
+- `scheduler`: escolhe em qual node cada Pod pendente vai rodar
+- `kubelet`: agente do node que materializa os Pods em execucao
 
 ### Objetos principais
 
 - `Pod`: unidade minima executavel
-- `Deployment`: replicas e rollout
-- `Service`: endpoint estavel
-- `Ingress`: entrada HTTP/HTTPS
+- `Deployment`: garante replicas, rollout e recriacao de Pods
+- `Service`: endpoint estavel para acessar Pods
+- `Ingress`: entrada HTTP/HTTPS na frente de um ou mais Services
+
+```text
+[ Usuario ]
+    |
+    v
+[ Ingress opcional ]
+    |
+    v
+[ Service ]
+    |
+    v
+[ Pods ]
+    ^
+    |
+[ Deployment ]
+```
 
 Detalhes:
 
