@@ -123,8 +123,8 @@ kubectl apply -f argocd/kube-starter-application.yaml
 Verificacao:
 
 ```bash
-kubectl get applications -n argocd
-kubectl describe application kube-starter -n argocd
+kubectl get applications.argoproj.io -n argocd
+kubectl describe applications.argoproj.io kube-starter -n argocd
 argocd app get kube-starter
 argocd app sync kube-starter
 argocd app wait kube-starter --health --sync
@@ -143,7 +143,7 @@ kubectl rollout status deployment/argocd-server -n argocd --timeout=300s
 kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=300s
 kubectl rollout status statefulset/argocd-application-controller -n argocd --timeout=300s
 kubectl apply -f argocd/kube-starter-application.yaml
-kubectl get application kube-starter -n argocd
+kubectl get applications.argoproj.io kube-starter -n argocd
 ```
 
 ## 8. O que a Application deste projeto faz

@@ -195,7 +195,7 @@ helm upgrade --install kube-starter ./helm/kube-starter \
 Inspecao:
 
 ```bash
-kubectl get deployments,services,ingress
+kubectl get deployments,services,ingresses
 kubectl get pods
 ```
 
@@ -271,7 +271,7 @@ kubectl create namespace argocd
 kubectl apply -n argocd --server-side --force-conflicts \
   -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 kubectl apply -f argocd/kube-starter-application.yaml
-kubectl get applications -n argocd
+kubectl get applications.argoproj.io -n argocd
 ```
 
 ## Diferencas praticas

@@ -267,7 +267,7 @@ helm upgrade --install kube-starter ./helm/kube-starter \
 Inspecao:
 
 ```bash
-kubectl get deployments,services,ingress -n kube-starter
+kubectl get deployments,services,ingresses -n kube-starter
 kubectl get pods -n kube-starter
 ```
 
@@ -332,8 +332,8 @@ kubectl apply -f argocd/kube-starter-application.yaml
 Verificando status:
 
 ```bash
-kubectl get applications -A
-kubectl get application kube-starter -n argocd \
+kubectl get applications.argoproj.io -A
+kubectl get applications.argoproj.io kube-starter -n argocd \
   -o jsonpath='{.status.sync.status} {.status.health.status}{"\n"}'
 ```
 
@@ -378,7 +378,7 @@ helm template kube-starter ./helm/kube-starter
 - backend responde `/api/health`
 - frontend responde `/`
 - `kubectl get pods -n kube-starter` mostra pods `Running`
-- `kubectl get applications -A` mostra `kube-starter` como `Synced Healthy`
+- `kubectl get applications.argoproj.io -A` mostra `kube-starter` como `Synced Healthy`
 
 ## Troubleshooting
 

@@ -72,7 +72,7 @@ helm rollback kube-starter 1
 Objetos:
 
 ```bash
-kubectl get pods,deployments,services,ingress -A
+kubectl get pods,deployments,services,ingresses -A
 ```
 
 Detalhes:
@@ -101,8 +101,8 @@ kubectl port-forward service/kube-starter-kube-starter-backend 3000:3000
 Applications:
 
 ```bash
-kubectl get applications -n argocd
-kubectl describe application kube-starter -n argocd
+kubectl get applications.argoproj.io -n argocd
+kubectl describe applications.argoproj.io kube-starter -n argocd
 ```
 
 Pods do Argo CD:
