@@ -238,26 +238,207 @@ Observacao: o [docker-compose.yml](docker-compose.yml) aceita `BACKEND_PORT` e `
 
 ## Execucao Com Cluster
 
-### 1. Rodando com kind
+### 1. Fluxo completo com imagens locais no kind
 
-Criando cluster:
+Este fluxo cria imagens Docker locais, carrega essas imagens no cluster `kind` e sobe a aplicacao no Kubernetes.
+
+#### 1.1 Validar ferramentas
+
+```bash
+docker version
+kind version
+kubectl version --client
+helm version
+```
+
+#### 1.2 Buildar aplicacao localmente
+
+Backend:
+
+```bash
+cd backend
+npm ci
+npm run build
+cd ..
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm ci
+npm run build
+cd ..
+```
+
+#### 1.3 Buildar imagens Docker locais
+
+```bash
+docker build -t kube-backend:latest ./backend
+docker build -t kube-frontend:latest ./frontend
+```
+
+Conferencia:
+
+```bash
+docker images kube-backend
+docker images kube-frontend
+```
+
+#### 1.4 Criar cluster kind
 
 ```bash
 kind create cluster --name kube-starter
 kubectl config use-context kind-kube-starter
 ```
 
-Carregando imagens locais:
+Se o cluster ja existir:
+
+```bash
+kind get clusters
+kubectl config use-context kind-kube-starter
+```
+
+#### 1.5 Verificar cluster
+
+```bash
+kubectl get nodes
+kubectl cluster-info --context kind-kube-starter
+```
+
+#### 1.6 Carregar imagens locais no kind
+
+O `kind` roda o Kubernetes dentro de containers Docker. Por isso, uma imagem existente no Docker local ainda precisa ser carregada para dentro do cluster.
 
 ```bash
 kind load docker-image kube-backend:latest --name kube-starter
 kind load docker-image kube-frontend:latest --name kube-starter
 ```
 
-Verificando cluster:
+Conferencia opcional dentro do node do `kind`:
 
 ```bash
-kubectl get nodes
+docker exec kube-starter-control-plane crictl images | grep kube-
+```
+
+#### 1.7 Instalar Metrics Server para HPA
+
+O chart cria HPAs por padrao. Para o HPA enxergar CPU e memoria, o cluster precisa do Metrics Server.
+
+```bash
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server
+helm repo update metrics-server
+helm upgrade --install metrics-server metrics-server/metrics-server \
+  --namespace kube-system \
+  --set args[0]=--kubelet-insecure-tls
+```
+
+Se o repositorio Helm ja existir localmente, execute apenas:
+
+```bash
+helm repo update metrics-server
+```
+
+Verificacao:
+
+```bash
+kubectl rollout status deployment/metrics-server -n kube-system --timeout=300s
+kubectl get apiservice v1beta1.metrics.k8s.io
+```
+
+#### 1.8 Subir aplicacao no cluster com Helm
+
+```bash
+helm lint ./helm/kube-starter
+helm template kube-starter ./helm/kube-starter
+helm upgrade --install kube-starter ./helm/kube-starter \
+  --namespace kube-starter \
+  --create-namespace \
+  --set backend.image.repository=kube-backend \
+  --set backend.image.tag=latest \
+  --set frontend.image.repository=kube-frontend \
+  --set frontend.image.tag=latest
+```
+
+#### 1.9 Esperar rollout
+
+```bash
+kubectl rollout status deployment/kube-starter-kube-starter-backend -n kube-starter --timeout=300s
+kubectl rollout status deployment/kube-starter-kube-starter-frontend -n kube-starter --timeout=300s
+```
+
+#### 1.10 Inspecionar recursos
+
+```bash
+kubectl get pods -n kube-starter
+kubectl get deployments,services,hpa -n kube-starter
+kubectl describe hpa -n kube-starter
+```
+
+As metricas podem demorar alguns segundos para aparecer:
+
+```bash
+kubectl top pods -n kube-starter
+```
+
+#### 1.11 Testar backend e frontend
+
+Em um terminal:
+
+```bash
+kubectl port-forward service/kube-starter-kube-starter-backend -n kube-starter 3003:3000
+```
+
+Em outro terminal:
+
+```bash
+curl http://localhost:3003/api/health
+curl http://localhost:3003/api/message
+curl http://localhost:3003/api/stats
+```
+
+Para o frontend, em um terminal:
+
+```bash
+kubectl port-forward service/kube-starter-kube-starter-frontend -n kube-starter 9082:80
+```
+
+Em outro terminal:
+
+```bash
+curl http://localhost:9082
+curl http://localhost:9082/api/health
+curl http://localhost:9082/api/stats
+```
+
+#### 1.12 Atualizar imagem depois de alterar codigo
+
+Sempre que backend ou frontend mudar, faca novo build e recarregue a imagem no `kind`.
+
+Backend:
+
+```bash
+docker build -t kube-backend:latest ./backend
+kind load docker-image kube-backend:latest --name kube-starter
+kubectl rollout restart deployment/kube-starter-kube-starter-backend -n kube-starter
+kubectl rollout status deployment/kube-starter-kube-starter-backend -n kube-starter --timeout=300s
+```
+
+Frontend:
+
+```bash
+docker build -t kube-frontend:latest ./frontend
+kind load docker-image kube-frontend:latest --name kube-starter
+kubectl rollout restart deployment/kube-starter-kube-starter-frontend -n kube-starter
+kubectl rollout status deployment/kube-starter-kube-starter-frontend -n kube-starter --timeout=300s
+```
+
+#### 1.13 Limpar ambiente
+
+Remover somente a aplicacao:
+
+```bash
+helm uninstall kube-starter -n kube-starter
 ```
 
 Removendo cluster:
@@ -345,6 +526,10 @@ helm uninstall kube-starter -n kube-starter
 
 ### 3. Rodando com Argo CD
 
+No `kind`, o Argo CD tambem usa as imagens locais carregadas no cluster. Antes de aplicar as `Applications`, execute os passos `1.2` ate `1.6` deste guia para buildar `kube-backend:latest`, buildar `kube-frontend:latest` e carregar as duas imagens no cluster.
+
+O Argo CD nao builda imagem. Ele renderiza o chart Helm a partir do Git e pede ao Kubernetes para rodar as imagens declaradas no `values.yaml`.
+
 Instalando Argo CD:
 
 ```bash
@@ -381,6 +566,21 @@ kubectl apply -f argocd/metrics-server-application.yaml
 kubectl apply -f argocd/kube-starter-application.yaml
 ```
 
+Esperando sincronizacao:
+
+```bash
+argocd app wait metrics-server --health --sync --timeout 300
+argocd app wait kube-starter --health --sync --timeout 300
+```
+
+Se estiver sem login no CLI do Argo CD, acompanhe via `kubectl`:
+
+```bash
+kubectl get applications.argoproj.io -n argocd
+kubectl get pods -n kube-system -l app.kubernetes.io/name=metrics-server
+kubectl get pods -n kube-starter
+```
+
 Verificando status:
 
 ```bash
@@ -407,6 +607,19 @@ curl http://localhost:9083
 curl http://localhost:9083/api/stats
 ```
 
+Atualizando imagens locais com Argo CD:
+
+```bash
+docker build -t kube-backend:latest ./backend
+docker build -t kube-frontend:latest ./frontend
+kind load docker-image kube-backend:latest --name kube-starter
+kind load docker-image kube-frontend:latest --name kube-starter
+kubectl rollout restart deployment/kube-starter-kube-starter-backend -n kube-starter
+kubectl rollout restart deployment/kube-starter-kube-starter-frontend -n kube-starter
+kubectl rollout status deployment/kube-starter-kube-starter-backend -n kube-starter --timeout=300s
+kubectl rollout status deployment/kube-starter-kube-starter-frontend -n kube-starter --timeout=300s
+```
+
 ## Validacao
 
 ### O que foi validado
@@ -424,6 +637,10 @@ curl http://localhost:9083/api/stats
 cd backend && npm run build
 cd ../frontend && npm run build
 cd .. && docker compose build
+docker build -t kube-backend:latest ./backend
+docker build -t kube-frontend:latest ./frontend
+kind load docker-image kube-backend:latest --name kube-starter
+kind load docker-image kube-frontend:latest --name kube-starter
 helm lint ./helm/kube-starter
 helm template kube-starter ./helm/kube-starter
 ```
