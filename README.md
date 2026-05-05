@@ -120,6 +120,375 @@ O frontend serve a interface para o navegador e faz proxy de `/api` para o backe
 - `GET /api/message`
 - `GET /api/stats`
 
+## Como Criar Os Artefatos Do Zero
+
+Esta secao mostra como criar os principais artefatos usados neste projeto: `Dockerfile`, chart Helm, `Chart.yaml`, `values.yaml` e templates Kubernetes.
+
+### 1. Criando um Dockerfile para backend Node.js
+
+Crie o arquivo `backend/Dockerfile`.
+
+Exemplo produtivo com multi-stage build:
+
+```dockerfile
+FROM node:20-alpine AS dependencies
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY package.json tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
+FROM node:20-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
+COPY --from=build /app/dist ./dist
+EXPOSE 3000
+CMD ["npm", "run", "start"]
+```
+
+Motivo da estrutura:
+
+- `dependencies`: instala dependencias de forma reproduzivel com `npm ci`
+- `build`: compila TypeScript sem levar arquivos desnecessarios para runtime
+- `runtime`: instala apenas dependencias de producao e executa o codigo compilado
+
+Build e teste:
+
+```bash
+docker build -t kube-backend:latest ./backend
+docker run --rm -p 3000:3000 kube-backend:latest
+curl http://localhost:3000/api/health
+```
+
+### 2. Criando um Dockerfile para frontend React/Vite
+
+Crie o arquivo `frontend/Dockerfile`.
+
+Exemplo produtivo com build em Node.js e runtime em nginx:
+
+```dockerfile
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci
+COPY index.html tsconfig.json tsconfig.node.json vite.config.ts ./
+COPY src ./src
+RUN npm run build
+
+FROM nginx:1.27-alpine AS runtime
+ENV BACKEND_SERVICE_URL=http://backend:3000
+COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80
+```
+
+Motivo da estrutura:
+
+- o build usa Node.js porque Vite precisa do toolchain JavaScript
+- o runtime usa nginx porque entrega arquivo estatico com menos overhead
+- `BACKEND_SERVICE_URL` permite apontar o proxy para o backend correto em Docker, Compose ou Kubernetes
+
+Build e teste:
+
+```bash
+docker build -t kube-frontend:latest ./frontend
+docker run --rm -p 8080:80 -e BACKEND_SERVICE_URL=http://host.docker.internal:3000 kube-frontend:latest
+curl http://localhost:8080
+```
+
+### 3. Criando um chart Helm
+
+Um chart Helm e um pacote de manifests Kubernetes parametrizados.
+
+Crie a estrutura:
+
+```bash
+mkdir -p helm/kube-starter/templates
+touch helm/kube-starter/Chart.yaml
+touch helm/kube-starter/values.yaml
+touch helm/kube-starter/templates/_helpers.tpl
+touch helm/kube-starter/templates/backend-deployment.yaml
+touch helm/kube-starter/templates/backend-service.yaml
+touch helm/kube-starter/templates/frontend-deployment.yaml
+touch helm/kube-starter/templates/frontend-service.yaml
+touch helm/kube-starter/templates/ingress.yaml
+```
+
+Estrutura esperada:
+
+```text
+helm/kube-starter/
+|-- Chart.yaml
+|-- values.yaml
+`-- templates/
+    |-- _helpers.tpl
+    |-- backend-deployment.yaml
+    |-- backend-service.yaml
+    |-- frontend-deployment.yaml
+    |-- frontend-service.yaml
+    `-- ingress.yaml
+```
+
+Tambem e possivel iniciar com:
+
+```bash
+helm create kube-starter
+```
+
+Neste repositorio, a estrutura foi mantida manual e enxuta para deixar cada recurso visivel.
+
+### 4. Criando o Chart.yaml
+
+O `Chart.yaml` descreve o pacote Helm.
+
+Exemplo:
+
+```yaml
+apiVersion: v2
+name: kube-starter
+description: Full-stack starter com frontend, backend e configuracao Kubernetes
+type: application
+version: 0.2.0
+appVersion: "1.0.0"
+```
+
+Campos principais:
+
+- `apiVersion`: `v2` para charts Helm 3
+- `name`: nome do chart
+- `description`: resumo do pacote
+- `type`: `application` para aplicacoes instalaveis
+- `version`: versao do chart, muda quando os manifests/valores mudam
+- `appVersion`: versao da aplicacao empacotada
+
+### 5. Criando o values.yaml
+
+O `values.yaml` centraliza configuracoes por ambiente.
+
+Exemplo base:
+
+```yaml
+frontend:
+  replicaCount: 1
+  image:
+    repository: kube-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+
+backend:
+  replicaCount: 1
+  image:
+    repository: kube-backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+```
+
+Exemplo com recursos e HPA:
+
+```yaml
+backend:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+```
+
+Regra pratica:
+
+- coloque no `values.yaml` tudo que muda por ambiente
+- mantenha nomes, labels e estrutura dos manifests nos templates
+- defina `resources.requests` quando usar HPA
+- evite hardcode de imagem, tag, porta, replicas e ingress nos templates
+
+### 6. Criando helpers do Helm
+
+O arquivo `templates/_helpers.tpl` concentra nomes e labels reutilizaveis.
+
+Exemplo:
+
+```yaml
+{{- define "kube-starter.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "kube-starter.fullname" -}}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name (include "kube-starter.name" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "kube-starter.labels" -}}
+app.kubernetes.io/name: {{ include "kube-starter.name" . }}
+helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end -}}
+```
+
+Motivo:
+
+- evita repetir regra de nome em todos os manifests
+- padroniza labels para seletores, observabilidade e operacao
+- reduz risco de Service apontar para Pods errados
+
+### 7. Criando um Deployment template
+
+Exemplo simplificado de backend:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kube-starter.backendFullname" . }}
+  labels:
+    {{- include "kube-starter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "kube-starter.labels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.backend.service.port }}
+```
+
+Pontos importantes:
+
+- `selector.matchLabels` precisa bater com `template.metadata.labels`
+- imagem, tag e pull policy devem vir de `values.yaml`
+- portas nomeadas facilitam `Service`, probes e leitura operacional
+
+### 8. Criando um Service template
+
+Exemplo:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kube-starter.backendFullname" . }}
+  labels:
+    {{- include "kube-starter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  type: {{ .Values.backend.service.type }}
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: backend
+  ports:
+    - name: http
+      port: {{ .Values.backend.service.port }}
+      targetPort: http
+```
+
+Pontos importantes:
+
+- `selector` deve apontar para labels dos Pods
+- `targetPort: http` usa a porta nomeada do container
+- `ClusterIP` e o padrao recomendado para comunicacao interna
+
+### 9. Criando um HPA template
+
+Exemplo:
+
+```yaml
+{{- if .Values.backend.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "kube-starter.backendFullname" . }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "kube-starter.backendFullname" . }}
+  minReplicas: {{ .Values.backend.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.backend.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.backend.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
+```
+
+Pontos importantes:
+
+- HPA precisa de Metrics Server no cluster
+- os containers precisam de `resources.requests`
+- quando HPA esta ativo, evite controlar `replicas` manualmente no `Deployment`
+
+### 10. Validando o chart
+
+Valide sintaxe e renderizacao:
+
+```bash
+helm lint ./helm/kube-starter
+helm template kube-starter ./helm/kube-starter
+```
+
+Renderize com overrides:
+
+```bash
+helm template kube-starter ./helm/kube-starter \
+  --set backend.image.repository=kube-backend \
+  --set backend.image.tag=latest \
+  --set frontend.image.repository=kube-frontend \
+  --set frontend.image.tag=latest
+```
+
+Instale ou atualize no cluster:
+
+```bash
+helm upgrade --install kube-starter ./helm/kube-starter \
+  --namespace kube-starter \
+  --create-namespace
+```
+
+Remova:
+
+```bash
+helm uninstall kube-starter -n kube-starter
+```
+
 ## Execucao Local
 
 ### 1. Build de aplicacao
