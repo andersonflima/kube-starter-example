@@ -132,6 +132,16 @@ Parada:
 docker compose down
 ```
 
+### Windows PowerShell
+
+O fluxo recomendado no Windows e usar WSL2, mantendo os mesmos comandos de Linux. Se estiver usando PowerShell diretamente, ajuste a declaracao de variaveis:
+
+```powershell
+$env:BACKEND_PORT = "3002"
+$env:FRONTEND_PORT = "9081"
+docker compose up --build -d
+```
+
 ## 3. Helm
 
 ### O que e
@@ -189,6 +199,16 @@ helm upgrade --install kube-starter ./helm/kube-starter \
   --set backend.image.repository=seu-registry/kube-backend \
   --set backend.image.tag=latest \
   --set frontend.image.repository=seu-registry/kube-frontend \
+  --set frontend.image.tag=latest
+```
+
+No PowerShell, use crase para continuar comandos em varias linhas:
+
+```powershell
+helm upgrade --install kube-starter ./helm/kube-starter `
+  --set backend.image.repository=seu-registry/kube-backend `
+  --set backend.image.tag=latest `
+  --set frontend.image.repository=seu-registry/kube-frontend `
   --set frontend.image.tag=latest
 ```
 

@@ -47,6 +47,42 @@ Este repositorio mostra, no mesmo projeto, quatro formas diferentes de empacotar
 - `Argo CD` instalado no cluster
 - opcional: `argocd` CLI
 
+### Compatibilidade por sistema operacional
+
+Os comandos principais deste guia usam sintaxe de shell POSIX, compativel com Linux, macOS e Windows via WSL2.
+
+No Windows, prefira executar Docker, `kind`, `kubectl` e Helm pelo WSL2. O PowerShell tambem funciona, mas exige pequenas adaptacoes:
+
+- troque `\` por crase quando quebrar comandos em varias linhas
+- defina variaveis de ambiente com `$env:NOME = "valor"`
+- quando possivel, use o comando em uma linha para evitar diferencas de shell
+
+Exemplo com quebra de linha:
+
+```bash
+helm upgrade --install kube-starter ./helm/kube-starter \
+  --namespace kube-starter \
+  --create-namespace
+```
+
+```powershell
+helm upgrade --install kube-starter ./helm/kube-starter `
+  --namespace kube-starter `
+  --create-namespace
+```
+
+Exemplo com variaveis de ambiente:
+
+```bash
+BACKEND_PORT=3002 FRONTEND_PORT=9081 docker compose up --build -d
+```
+
+```powershell
+$env:BACKEND_PORT = "3002"
+$env:FRONTEND_PORT = "9081"
+docker compose up --build -d
+```
+
 ## Estrutura do projeto
 
 ```text
