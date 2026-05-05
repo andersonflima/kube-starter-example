@@ -8,6 +8,7 @@ Exemplo full-stack com:
 - `docker-compose.yml` para ambiente local integrado
 - chart Helm para Kubernetes
 - exemplo de fluxo GitOps com Argo CD
+- HPA com metricas de CPU e memoria via Metrics Server
 
 ## Objetivo
 
@@ -17,15 +18,17 @@ Este repositorio mostra, no mesmo projeto, quatro formas diferentes de empacotar
 - `Docker Compose`: sobe a stack local inteira com rede compartilhada
 - `Helm`: instala a aplicacao no Kubernetes a partir de um chart
 - `Argo CD`: aplica GitOps em cima do chart Helm versionado no Git
+- `Metrics Server + HPA`: coleta metricas de recursos e escala replicas automaticamente
 
 ## Mapa da documentacao
 
-- guia principal: [README.md](/Users/andersonespindola/snippets/kube/README.md)
-- workflows e escolha de ferramenta: [docs/workflows-and-tooling.md](/Users/andersonespindola/snippets/kube/docs/workflows-and-tooling.md)
-- fundamentos do Kubernetes: [docs/kubernetes-fundamentals.md](/Users/andersonespindola/snippets/kube/docs/kubernetes-fundamentals.md)
-- GitOps com Argo CD: [docs/argocd-gitops.md](/Users/andersonespindola/snippets/kube/docs/argocd-gitops.md)
-- debug e troubleshooting: [docs/debugging-cheatsheet.md](/Users/andersonespindola/snippets/kube/docs/debugging-cheatsheet.md)
-- exemplo de `Application` do Argo CD: [argocd/kube-starter-application.yaml](/Users/andersonespindola/snippets/kube/argocd/kube-starter-application.yaml)
+- guia principal: [README.md](README.md)
+- workflows e escolha de ferramenta: [docs/workflows-and-tooling.md](docs/workflows-and-tooling.md)
+- fundamentos do Kubernetes: [docs/kubernetes-fundamentals.md](docs/kubernetes-fundamentals.md)
+- GitOps com Argo CD: [docs/argocd-gitops.md](docs/argocd-gitops.md)
+- debug e troubleshooting: [docs/debugging-cheatsheet.md](docs/debugging-cheatsheet.md)
+- exemplo de `Application` do Argo CD: [argocd/kube-starter-application.yaml](argocd/kube-starter-application.yaml)
+- exemplo de `Application` do Metrics Server: [argocd/metrics-server-application.yaml](argocd/metrics-server-application.yaml)
 
 ## Pre-Requisitos
 
@@ -108,6 +111,8 @@ O frontend serve a interface para o navegador e faz proxy de `/api` para o backe
 - docker compose: sobe os dois servicos juntos localmente
 - helm: define os manifests parametrizados da aplicacao no cluster
 - argo cd: observa o Git e reconcilia o cluster automaticamente
+- metrics server: publica metricas para o HPA
+- hpa: ajusta replicas conforme uso de CPU e memoria
 
 ## Endpoints
 
@@ -229,7 +234,7 @@ curl http://localhost:9081
 curl http://localhost:9081/api/stats
 ```
 
-Observacao: o [docker-compose.yml](/Users/andersonespindola/snippets/kube/docker-compose.yml) aceita `BACKEND_PORT` e `FRONTEND_PORT`.
+Observacao: o [docker-compose.yml](docker-compose.yml) aceita `BACKEND_PORT` e `FRONTEND_PORT`.
 
 ## Execucao Com Cluster
 
@@ -278,6 +283,16 @@ helm upgrade --install kube-starter ./helm/kube-starter \
   --create-namespace
 ```
 
+O chart cria HPA por padrao para backend e frontend. Para desabilitar:
+
+```bash
+helm upgrade --install kube-starter ./helm/kube-starter \
+  --namespace kube-starter \
+  --create-namespace \
+  --set backend.autoscaling.enabled=false \
+  --set frontend.autoscaling.enabled=false
+```
+
 Instalacao com override:
 
 ```bash
@@ -303,7 +318,7 @@ helm upgrade --install kube-starter ./helm/kube-starter \
 Inspecao:
 
 ```bash
-kubectl get deployments,services,ingresses -n kube-starter
+kubectl get deployments,services,hpa,ingresses -n kube-starter
 kubectl get pods -n kube-starter
 ```
 
@@ -362,6 +377,7 @@ argocd admin initial-password -n argocd
 Aplicando a `Application`:
 
 ```bash
+kubectl apply -f argocd/metrics-server-application.yaml
 kubectl apply -f argocd/kube-starter-application.yaml
 ```
 
@@ -369,6 +385,8 @@ Verificando status:
 
 ```bash
 kubectl get applications.argoproj.io -A
+kubectl get apiservice v1beta1.metrics.k8s.io
+kubectl get hpa -n kube-starter
 kubectl get applications.argoproj.io kube-starter -n argocd \
   -o jsonpath='{.status.sync.status} {.status.health.status}{"\n"}'
 ```
@@ -398,6 +416,7 @@ curl http://localhost:9083/api/stats
 - `Docker Compose`: build, subida e teste real com `curl`
 - `Helm`: `helm lint`, `helm template`, deploy em `kind` e teste real com `curl`
 - `Argo CD`: instalacao no `kind`, `Application` com status `Synced Healthy` e teste real com `curl`
+- `HPA`: renderizacao dos objetos `HorizontalPodAutoscaler` para frontend e backend
 
 ### Checklist rapido
 
@@ -415,6 +434,7 @@ helm template kube-starter ./helm/kube-starter
 - frontend responde `/`
 - `kubectl get pods -n kube-starter` mostra pods `Running`
 - `kubectl get applications.argoproj.io -A` mostra `kube-starter` como `Synced Healthy`
+- `kubectl get hpa -n kube-starter` mostra metricas quando o Metrics Server esta saudavel
 
 ## Troubleshooting
 
@@ -443,6 +463,16 @@ As CRDs do Argo CD precisam estar instaladas:
 kubectl get crd applications.argoproj.io
 ```
 
+### HPA sem metricas
+
+Verifique se o Metrics Server esta instalado e publicando a API de metricas:
+
+```bash
+kubectl get apiservice v1beta1.metrics.k8s.io
+kubectl top pods -n kube-starter
+kubectl describe hpa -n kube-starter
+```
+
 ### App nao fica `Healthy`
 
 Verifique:
@@ -456,7 +486,7 @@ kubectl logs deployment/kube-starter-kube-starter-frontend -n kube-starter
 
 Mais comandos:
 
-- [docs/debugging-cheatsheet.md](/Users/andersonespindola/snippets/kube/docs/debugging-cheatsheet.md)
+- [docs/debugging-cheatsheet.md](docs/debugging-cheatsheet.md)
 
 ## Diferencas Entre As Ferramentas
 
@@ -532,6 +562,9 @@ Resumo pratico:
     |
     v
 [ Pod do Backend ]
+    ^
+    |
+[ HPA + Metrics Server ]
 ```
 
 ### Fluxo com Argo CD
@@ -549,7 +582,7 @@ Resumo pratico:
 [ Argo CD ]
       |
       v
-[ Helm chart em helm/kube-starter ]
+[ Metrics Server Application + kube-starter Application ]
       |
       v
 [ kube-apiserver ]
@@ -598,6 +631,8 @@ Quando voce instala este projeto com `Helm` ou deixa o `Argo CD` sincronizar o c
 - `Deployment`: garante replicas, rollout e recriacao de Pods
 - `Service`: endpoint estavel para acessar Pods
 - `Ingress`: entrada HTTP/HTTPS na frente de um ou mais Services
+- `HorizontalPodAutoscaler`: escala replicas a partir de metricas
+- `Metrics Server`: fornece metricas de CPU e memoria para o HPA
 
 ```text
 [ Usuario ]
@@ -613,8 +648,14 @@ Quando voce instala este projeto com `Helm` ou deixa o `Argo CD` sincronizar o c
     ^
     |
 [ Deployment ]
+    ^
+    |
+[ HPA ]
+    ^
+    |
+[ Metrics Server ]
 ```
 
 Detalhes:
 
-- [docs/kubernetes-fundamentals.md](/Users/andersonespindola/snippets/kube/docs/kubernetes-fundamentals.md)
+- [docs/kubernetes-fundamentals.md](docs/kubernetes-fundamentals.md)

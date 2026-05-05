@@ -24,6 +24,7 @@ O Argo CD:
 - exibe sync status e health status
 - pode sincronizar automaticamente
 - pode desfazer drift manual se `selfHeal` estiver ligado
+- pode instalar dependencias operacionais, como Metrics Server, a partir de charts externos
 
 ## 3. O que o Argo CD nao faz sozinho
 
@@ -75,7 +76,7 @@ Neste projeto, o caminho mais natural e:
 [ Argo CD observa a branch main ]
           |
           v
-[ Argo CD usa o chart Helm em helm/kube-starter ]
+[ Argo CD reconcilia Metrics Server e o chart Helm em helm/kube-starter ]
           |
           v
 [ kube-apiserver ]
@@ -112,11 +113,13 @@ argocd admin initial-password -n argocd
 
 O repositorio contem um exemplo pronto:
 
-- [argocd/kube-starter-application.yaml](/Users/andersonespindola/snippets/kube/argocd/kube-starter-application.yaml)
+- [argocd/kube-starter-application.yaml](../argocd/kube-starter-application.yaml)
+- [argocd/metrics-server-application.yaml](../argocd/metrics-server-application.yaml)
 
 Aplicacao:
 
 ```bash
+kubectl apply -f argocd/metrics-server-application.yaml
 kubectl apply -f argocd/kube-starter-application.yaml
 ```
 
@@ -124,6 +127,8 @@ Verificacao:
 
 ```bash
 kubectl get applications.argoproj.io -n argocd
+kubectl get apiservice v1beta1.metrics.k8s.io
+kubectl get hpa -n kube-starter
 kubectl describe applications.argoproj.io kube-starter -n argocd
 argocd app get kube-starter
 argocd app sync kube-starter
@@ -142,6 +147,7 @@ kubectl apply -n argocd --server-side --force-conflicts \
 kubectl rollout status deployment/argocd-server -n argocd --timeout=300s
 kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=300s
 kubectl rollout status statefulset/argocd-application-controller -n argocd --timeout=300s
+kubectl apply -f argocd/metrics-server-application.yaml
 kubectl apply -f argocd/kube-starter-application.yaml
 kubectl get applications.argoproj.io kube-starter -n argocd
 ```
@@ -152,11 +158,22 @@ kubectl get applications.argoproj.io kube-starter -n argocd
 - aponta para `main`
 - usa `helm/kube-starter` como path
 - cria recursos no namespace `kube-starter`
+- cria HPAs para backend e frontend
 - ativa `prune`
 - ativa `selfHeal`
 - ativa `CreateNamespace=true`
 
-## 9. Exemplo de operacao
+## 9. O que a Application do Metrics Server faz
+
+- usa o chart oficial `metrics-server`
+- instala no namespace `kube-system`
+- habilita `ServerSideApply`
+- usa `--kubelet-insecure-tls` para facilitar clusters locais como `kind`
+- publica a API `metrics.k8s.io`, usada pelo HPA
+
+Em producao, revise `--kubelet-insecure-tls` e prefira certificados de kubelet validos.
+
+## 10. Exemplo de operacao
 
 ### Cenario 1: voce muda o values
 
@@ -173,7 +190,7 @@ kubectl get applications.argoproj.io kube-starter -n argocd
 3. o Argo CD detecta drift
 4. se `selfHeal` estiver ligado, ele volta ao estado do Git
 
-## 10. Quando Argo CD vale a pena
+## 11. Quando Argo CD vale a pena
 
 - quando existem varios ambientes
 - quando varias pessoas fazem deploy
@@ -181,26 +198,27 @@ kubectl get applications.argoproj.io kube-starter -n argocd
 - quando quer reduzir deploy manual
 - quando quer detectar drift rapidamente
 
-## 11. Quando Helm puro pode bastar
+## 12. Quando Helm puro pode bastar
 
 - laboratorio pequeno
 - ambiente efemero
 - deploy manual controlado
 - pouca necessidade de reconciliacao continua
 
-## 12. Regra pratica
+## 13. Regra pratica
 
 - `Helm` sem `Argo CD`: bom para deploy manual ou pipeline simples
 - `Helm` com `Argo CD`: melhor para operacao continua e GitOps
 
-## 13. Referencias oficiais
+## 14. Referencias oficiais
 
 - Argo CD Getting Started: https://argo-cd.readthedocs.io/en/release-3.4/getting_started/
 - Argo CD Installation: https://argo-cd.readthedocs.io/en/latest/operator-manual/installation/
+- Metrics Server: https://github.com/kubernetes-sigs/metrics-server
 
-## 14. Observacao sobre validacao
+## 15. Observacao sobre validacao
 
-O manifesto [argocd/kube-starter-application.yaml](/Users/andersonespindola/snippets/kube/argocd/kube-starter-application.yaml) depende da CRD `Application` do Argo CD.
+O manifesto [argocd/kube-starter-application.yaml](../argocd/kube-starter-application.yaml) depende da CRD `Application` do Argo CD.
 
 Isso significa:
 

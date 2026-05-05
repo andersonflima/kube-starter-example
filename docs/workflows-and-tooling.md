@@ -86,7 +86,7 @@ curl http://localhost:8080/api/stats
 
 ### Exemplo neste projeto
 
-O [docker-compose.yml](/Users/andersonespindola/snippets/kube/docker-compose.yml) sobe:
+O [docker-compose.yml](../docker-compose.yml) sobe:
 
 - `backend`
 - `frontend`
@@ -163,12 +163,14 @@ docker compose up --build -d
 
 ### Exemplo neste projeto
 
-O chart em [helm/kube-starter](/Users/andersonespindola/snippets/kube/helm/kube-starter) cria:
+O chart em [helm/kube-starter](../helm/kube-starter) cria:
 
 - `Deployment` do backend
 - `Service` do backend
+- `HorizontalPodAutoscaler` do backend
 - `Deployment` do frontend
 - `Service` do frontend
+- `HorizontalPodAutoscaler` do frontend
 - `Ingress` opcional
 
 ### Quando usar
@@ -219,6 +221,23 @@ kubectl get deployments,services,ingresses
 kubectl get pods
 ```
 
+### HPA e metricas
+
+O HPA depende de duas coisas:
+
+- `resources.requests` nos containers
+- Metrics Server publicando a API `metrics.k8s.io`
+
+Neste projeto, o chart define requests/limits e cria HPAs por padrao. O Metrics Server pode ser instalado pelo manifesto GitOps em [argocd/metrics-server-application.yaml](../argocd/metrics-server-application.yaml).
+
+Validacao:
+
+```bash
+kubectl get apiservice v1beta1.metrics.k8s.io
+kubectl top pods -n kube-starter
+kubectl get hpa -n kube-starter
+```
+
 ## 4. Argo CD
 
 ### O que e
@@ -241,7 +260,7 @@ kubectl get pods
 
 ### Exemplo neste projeto
 
-O arquivo [argocd/kube-starter-application.yaml](/Users/andersonespindola/snippets/kube/argocd/kube-starter-application.yaml) manda o Argo CD usar:
+O arquivo [argocd/kube-starter-application.yaml](../argocd/kube-starter-application.yaml) manda o Argo CD usar:
 
 - repositorio: `https://github.com/andersonflima/kube-starter-example.git`
 - path: `helm/kube-starter`

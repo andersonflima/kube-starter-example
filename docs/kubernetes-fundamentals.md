@@ -170,6 +170,24 @@ para um ou mais `Services`.
 
 Neste projeto, o `Ingress` e opcional e aponta para o `Service` do frontend.
 
+### HorizontalPodAutoscaler
+
+O `HorizontalPodAutoscaler` ajusta o numero de replicas de um `Deployment`.
+
+Ele compara:
+
+- metricas atuais de CPU e memoria
+- metas declaradas no HPA
+- limites minimo e maximo de replicas
+
+Neste projeto, backend e frontend possuem HPA configurado pelo chart Helm.
+
+### Metrics Server
+
+O `Metrics Server` coleta metricas de uso de recursos de Pods e Nodes e publica a API `metrics.k8s.io`.
+
+Sem ele, o HPA ate pode existir, mas fica sem metricas para decidir escala.
+
 ## 4. Como esses objetos se relacionam
 
 ```text
@@ -186,6 +204,12 @@ Neste projeto, o `Ingress` e opcional e aponta para o `Service` do frontend.
     ^
     |
 [ Deployment ]
+    ^
+    |
+[ HPA ]
+    ^
+    |
+[ Metrics Server ]
 ```
 
 ## 5. Leitura pratica deste repositorio
@@ -207,6 +231,8 @@ Neste projeto, o `Ingress` e opcional e aponta para o `Service` do frontend.
 - `Deployment`: disponibilidade e rollout
 - `Service`: comunicacao
 - `Ingress`: exposicao web
+- `HorizontalPodAutoscaler`: escala horizontal
+- `Metrics Server`: fonte de metricas de recursos
 - `kube-apiserver`: entrada da API
 - `etcd`: persistencia do estado
 - `controller-manager`: reconciliacao
