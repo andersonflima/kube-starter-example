@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-starter
+  labels:
+    app.kubernetes.io/name: kube-starter
+    app.kubernetes.io/part-of: kube-starter

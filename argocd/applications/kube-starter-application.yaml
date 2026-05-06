@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-starter
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  project: kube-starter-platform
+  source:
+    repoURL: https://github.com/andersonflima/kube-starter-example.git
+    targetRevision: main
+    path: helm/kube-starter
+    helm:
+      releaseName: kube-starter
+      valueFiles:
+        - values.yaml
+        - values-observability.yaml
+      values: |
+        ingress:
+          enabled: true
+          className: nginx
+          hosts:
+            - host: kube-starter.localhost
+              paths:
+                - path: /
+                  pathType: Prefix
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-starter
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m

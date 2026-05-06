@@ -107,11 +107,12 @@ const App = () => {
       </section>
 
       <section className="status-strip" aria-label="Deployment assets">
-        <span>3 endpoints</span>
+        <span>4 endpoints</span>
         <span>React + Vite</span>
         <span>Express + TypeScript</span>
         <span>Docker Compose</span>
         <span>Helm chart</span>
+        <span>Prometheus metrics</span>
       </section>
 
       <section className="endpoint-grid" id="endpoints">
@@ -174,6 +175,26 @@ const App = () => {
             </div>
           </dl>
         </article>
+
+        <article>
+          <p className="endpoint-grid__label">GET /metrics</p>
+          <h2>Prometheus metrics</h2>
+          <p>Expoe metricas HTTP e metricas padrao do runtime para coleta pelo Prometheus.</p>
+          <dl>
+            <div>
+              <dt>Format</dt>
+              <dd>Prometheus text exposition</dd>
+            </div>
+            <div>
+              <dt>ServiceMonitor</dt>
+              <dd>Opcional no Helm, ativo no GitOps</dd>
+            </div>
+            <div>
+              <dt>Scrape path</dt>
+              <dd>/metrics</dd>
+            </div>
+          </dl>
+        </article>
       </section>
 
       <section className="footer-panel">
@@ -188,4 +209,3 @@ const App = () => {
 };
 
 export default App;
-

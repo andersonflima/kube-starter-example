@@ -1,9 +1,19 @@
 import cors from "cors";
 import express from "express";
+import type { Request } from "express";
+import { collectDefaultMetrics, Counter, Registry } from "prom-client";
+
+type HttpMetricLabel = "method" | "route" | "status_code";
+
+type MetricsRegistry = {
+  readonly registry: Registry;
+  readonly httpRequestsTotal: Counter<HttpMetricLabel>;
+};
 
 type AppDependencies = {
   readonly now: () => Date;
   readonly startedAt: Date;
+  readonly metrics: MetricsRegistry;
 };
 
 type HealthResponse = {
@@ -30,6 +40,26 @@ const toIsoString = (value: Date): string => value.toISOString();
 
 const toUptimeInSeconds = (startedAt: Date, currentTime: Date): number =>
   Math.max(0, Math.floor((currentTime.getTime() - startedAt.getTime()) / 1000));
+
+const toRouteLabel = (request: Request): string =>
+  typeof request.route?.path === "string" ? request.route.path : "unmatched";
+
+export const createMetricsRegistry = (): MetricsRegistry => {
+  const registry = new Registry();
+  const httpRequestsTotal = new Counter({
+    name: "kube_starter_http_requests_total",
+    help: "Total HTTP requests handled by the backend.",
+    labelNames: ["method", "route", "status_code"] as const,
+    registers: [registry]
+  });
+
+  collectDefaultMetrics({ register: registry });
+
+  return {
+    registry,
+    httpRequestsTotal
+  };
+};
 
 const buildHealthResponse = ({ now }: AppDependencies): HealthResponse => ({
   service: "backend",
@@ -60,6 +90,17 @@ export const createApp = (dependencies: AppDependencies) => {
 
   app.use(cors());
   app.use(express.json());
+  app.use((request, response, next) => {
+    response.on("finish", () => {
+      dependencies.metrics.httpRequestsTotal.inc({
+        method: request.method,
+        route: toRouteLabel(request),
+        status_code: String(response.statusCode)
+      });
+    });
+
+    next();
+  });
 
   app.get("/api/health", (_request, response) => {
     response.json(buildHealthResponse(dependencies));
@@ -73,6 +114,10 @@ export const createApp = (dependencies: AppDependencies) => {
     response.json(buildStatsResponse(dependencies));
   });
 
+  app.get("/metrics", async (_request, response) => {
+    response.setHeader("Content-Type", dependencies.metrics.registry.contentType);
+    response.end(await dependencies.metrics.registry.metrics());
+  });
+
   return app;
 };
-

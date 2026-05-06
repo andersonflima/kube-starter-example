@@ -1,22 +1,23 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: kube-starter
+  name: kube-starter-platform
   namespace: argocd
 spec:
   project: default
   source:
     repoURL: https://github.com/andersonflima/kube-starter-example.git
     targetRevision: main
-    path: helm/kube-starter
-    helm:
-      releaseName: kube-starter
+    path: argocd/applications
+    directory:
+      recurse: true
   destination:
     server: https://kubernetes.default.svc
-    namespace: kube-starter
+    namespace: argocd
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - ServerSideApply=true

@@ -1,0 +1,23 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kube-starter-backend
+  namespace: kube-starter
+  labels:
+    app.kubernetes.io/name: kube-starter
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: kube-starter
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - kube-starter
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-starter
+      app.kubernetes.io/component: backend
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s

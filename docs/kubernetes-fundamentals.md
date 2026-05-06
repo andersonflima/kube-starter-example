@@ -117,6 +117,17 @@ Se o scheduler escolhe o node, o kubelet e quem executa de fato.
 
 ## 3. Recursos principais
 
+### Namespace
+
+O `Namespace` separa recursos dentro do mesmo cluster.
+
+Neste projeto:
+
+- `argocd`: controller GitOps
+- `ingress-nginx`: controller de entrada HTTP
+- `monitoring`: Prometheus, Alertmanager e Grafana
+- `kube-starter`: aplicacao frontend/backend
+
 ### Pod
 
 O `Pod` e a menor unidade executavel do Kubernetes.
@@ -188,6 +199,26 @@ O `Metrics Server` coleta metricas de uso de recursos de Pods e Nodes e publica 
 
 Sem ele, o HPA ate pode existir, mas fica sem metricas para decidir escala.
 
+### ServiceMonitor
+
+O `ServiceMonitor` e um recurso criado pelo Prometheus Operator.
+
+Ele declara quais `Services` devem ser coletados pelo Prometheus.
+
+Neste projeto, o backend expoe `/metrics` e o chart Helm pode criar um `ServiceMonitor` apontando para esse endpoint.
+
+### Prometheus
+
+O `Prometheus` coleta, armazena e consulta series temporais.
+
+Neste projeto, ele vem pelo chart `kube-prometheus-stack`.
+
+### Grafana
+
+O `Grafana` visualiza metricas e dashboards.
+
+Neste projeto, ele tambem vem pelo `kube-prometheus-stack`.
+
 ## 4. Como esses objetos se relacionam
 
 ```text
@@ -212,6 +243,21 @@ Sem ele, o HPA ate pode existir, mas fica sem metricas para decidir escala.
 [ Metrics Server ]
 ```
 
+Fluxo de observabilidade:
+
+```text
+[ Backend /metrics ]
+        ^
+        |
+[ ServiceMonitor ]
+        ^
+        |
+[ Prometheus Operator ]
+        |
+        v
+[ Prometheus ] -> [ Grafana ]
+```
+
 ## 5. Leitura pratica deste repositorio
 
 ### Backend
@@ -233,6 +279,9 @@ Sem ele, o HPA ate pode existir, mas fica sem metricas para decidir escala.
 - `Ingress`: exposicao web
 - `HorizontalPodAutoscaler`: escala horizontal
 - `Metrics Server`: fonte de metricas de recursos
+- `ServiceMonitor`: descoberta declarativa de metricas para Prometheus
+- `Prometheus`: coleta e consulta de metricas
+- `Grafana`: visualizacao de dashboards
 - `kube-apiserver`: entrada da API
 - `etcd`: persistencia do estado
 - `controller-manager`: reconciliacao

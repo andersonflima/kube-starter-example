@@ -1,99 +1,80 @@
 # Debugging Cheatsheet
 
-Comandos uteis para inspecionar a stack local, o release Helm e a app no Argo CD.
+Comandos diretos para diagnosticar Docker, Compose, Kubernetes, Helm, Argo CD e observabilidade.
 
 ## Docker
-
-Containers:
 
 ```bash
 docker ps
 docker logs backend
 docker logs frontend
-```
-
-Rede:
-
-```bash
-docker network ls
-docker inspect kube-starter
+docker inspect backend
+docker inspect frontend
 ```
 
 ## Docker Compose
 
-Status:
-
 ```bash
 docker compose ps
-```
-
-Logs:
-
-```bash
 docker compose logs -f
 docker compose logs -f backend
 docker compose logs -f frontend
-```
-
-Rebuild:
-
-```bash
 docker compose up --build --force-recreate
+docker compose down
 ```
 
-## Helm
-
-Templates:
+## kind
 
 ```bash
-helm template kube-starter ./helm/kube-starter
-```
-
-Lint:
-
-```bash
-helm lint ./helm/kube-starter
-```
-
-Historico:
-
-```bash
-helm history kube-starter
-```
-
-Rollback:
-
-```bash
-helm rollback kube-starter 1
+kind get clusters
+kubectl config current-context
+kubectl get nodes -o wide
+docker exec kube-starter-control-plane crictl images | grep kube-
 ```
 
 ## Kubernetes
 
-Objetos:
+Objetos principais:
 
 ```bash
-kubectl get pods,deployments,services,ingresses -A
-```
-
-Detalhes:
-
-```bash
-kubectl describe deployment kube-starter-kube-starter-backend
-kubectl describe service kube-starter-kube-starter-frontend
+kubectl get pods,deployments,services,hpa,ingresses -n kube-starter
+kubectl describe deployment kube-starter-backend -n kube-starter
+kubectl describe deployment kube-starter-frontend -n kube-starter
+kubectl describe hpa -n kube-starter
 ```
 
 Logs:
 
 ```bash
-kubectl logs deployment/kube-starter-kube-starter-backend
-kubectl logs deployment/kube-starter-kube-starter-frontend
+kubectl logs deployment/kube-starter-backend -n kube-starter
+kubectl logs deployment/kube-starter-frontend -n kube-starter
 ```
 
 Port-forward:
 
 ```bash
-kubectl port-forward service/kube-starter-kube-starter-frontend 8080:80
-kubectl port-forward service/kube-starter-kube-starter-backend 3000:3000
+kubectl port-forward service/kube-starter-backend -n kube-starter 3003:3000
+kubectl port-forward service/kube-starter-frontend -n kube-starter 9082:80
+```
+
+Ingress:
+
+```bash
+kubectl get ingress -n kube-starter
+kubectl describe ingress kube-starter -n kube-starter
+kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller
+curl http://kube-starter.localhost:8080/api/health
+```
+
+## Helm
+
+```bash
+helm lint ./helm/kube-starter
+helm template kube-starter ./helm/kube-starter
+helm history kube-starter -n kube-starter
+helm get values kube-starter -n kube-starter
+helm get manifest kube-starter -n kube-starter
+helm rollback kube-starter 1 -n kube-starter
 ```
 
 ## Argo CD
@@ -102,49 +83,96 @@ Applications:
 
 ```bash
 kubectl get applications.argoproj.io -n argocd
+kubectl describe applications.argoproj.io kube-starter-platform -n argocd
 kubectl describe applications.argoproj.io kube-starter -n argocd
 ```
 
-Pods do Argo CD:
+Pods:
 
 ```bash
 kubectl get pods -n argocd
+kubectl logs deployment/argocd-server -n argocd
+kubectl logs deployment/argocd-repo-server -n argocd
+kubectl logs statefulset/argocd-application-controller -n argocd
 ```
 
-Logs do controller:
+UI:
 
 ```bash
-kubectl logs deployment/argocd-application-controller -n argocd
+kubectl port-forward svc/argocd-server -n argocd 8081:443
+argocd admin initial-password -n argocd
 ```
 
-UI local:
+## Metrics Server E HPA
 
 ```bash
-kubectl port-forward svc/argocd-server -n argocd 8080:443
+kubectl get apiservice v1beta1.metrics.k8s.io
+kubectl top nodes
+kubectl top pods -n kube-starter
+kubectl get hpa -n kube-starter
+kubectl describe hpa kube-starter-backend -n kube-starter
 ```
 
-## Sinais comuns de problema
+## Prometheus E Grafana
 
-### Backend nao responde
+```bash
+kubectl get pods -n monitoring
+kubectl get servicemonitors.monitoring.coreos.com -A
+kubectl get prometheus -n monitoring
+kubectl get alertmanager -n monitoring
+curl http://prometheus.localhost:8080/-/ready
+curl http://grafana.localhost:8080/login
+```
 
-- imagem nao foi publicada
-- `Service` aponta para labels erradas
-- container nao escuta na porta esperada
+## Problemas Comuns
 
-### Frontend nao enxerga backend
+### ImagePullBackOff No kind
 
-- `BACKEND_SERVICE_URL` incorreta
-- `Service` do backend inexistente
-- backend falhando readiness
+As imagens locais precisam ser carregadas no cluster:
 
-### Helm instala, mas app nao sobe
+```bash
+make build-images
+make images-load
+kubectl rollout restart deployment/kube-starter-backend -n kube-starter
+kubectl rollout restart deployment/kube-starter-frontend -n kube-starter
+```
 
-- imagem errada
-- probes falhando
-- porta divergente entre container e service
+### Ingress Nao Responde
 
-### Argo CD fica OutOfSync
+Verifique:
 
-- houve drift manual no cluster
-- o repositorio mudou e o sync ainda nao rodou
-- a `Application` aponta para path ou branch errados
+```bash
+kubectl get pods -n ingress-nginx
+kubectl get ingress -A
+curl -H "Host: kube-starter.localhost" http://localhost:8080/api/health
+```
+
+### HPA Sem Metricas
+
+Verifique:
+
+```bash
+kubectl get apiservice v1beta1.metrics.k8s.io
+kubectl logs deployment/metrics-server -n kube-system
+kubectl top pods -n kube-starter
+```
+
+### ServiceMonitor Nao Aparece No Prometheus
+
+Verifique:
+
+```bash
+kubectl get crd servicemonitors.monitoring.coreos.com
+kubectl get servicemonitors.monitoring.coreos.com -n kube-starter
+kubectl get prometheus kube-prometheus-stack -n monitoring -o yaml | grep -A5 serviceMonitorSelector
+```
+
+### Application OutOfSync
+
+Verifique:
+
+```bash
+kubectl describe applications.argoproj.io kube-starter -n argocd
+argocd app get kube-starter
+argocd app sync kube-starter
+```
