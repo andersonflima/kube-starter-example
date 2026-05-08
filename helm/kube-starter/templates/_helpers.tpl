@@ -31,3 +31,8 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/part-of: kube-starter
 {{- end -}}
+
+{{- define "kube-starter.selectorLabels" -}}
+app.kubernetes.io/instance: {{ .root.Release.Name }}
+app.kubernetes.io/component: {{ .component }}
+{{- end -}}

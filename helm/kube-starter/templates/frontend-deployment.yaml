@@ -11,8 +11,7 @@ spec:
   {{- end }}
   selector:
     matchLabels:
-      app.kubernetes.io/instance: {{ .Release.Name }}
-      app.kubernetes.io/component: frontend
+      {{- include "kube-starter.selectorLabels" (dict "root" . "component" "frontend") | nindent 6 }}
   template:
     metadata:
       labels:

@@ -1,4 +1,10 @@
 {{- if .Values.backend.autoscaling.enabled }}
+{{- if gt (.Values.backend.autoscaling.minReplicas | int) (.Values.backend.autoscaling.maxReplicas | int) }}
+{{- fail "backend.autoscaling.minReplicas must be less than or equal to backend.autoscaling.maxReplicas" }}
+{{- end }}
+{{- if not (or .Values.backend.autoscaling.targetCPUUtilizationPercentage .Values.backend.autoscaling.targetMemoryUtilizationPercentage) }}
+{{- fail "backend.autoscaling requires at least one target metric: targetCPUUtilizationPercentage or targetMemoryUtilizationPercentage" }}
+{{- end }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

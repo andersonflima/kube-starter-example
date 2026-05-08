@@ -8,10 +8,8 @@ metadata:
 spec:
   type: {{ .Values.backend.service.type }}
   selector:
-    app.kubernetes.io/instance: {{ .Release.Name }}
-    app.kubernetes.io/component: backend
+    {{- include "kube-starter.selectorLabels" (dict "root" . "component" "backend") | nindent 4 }}
   ports:
     - name: http
       port: {{ .Values.backend.service.port }}
       targetPort: http
-

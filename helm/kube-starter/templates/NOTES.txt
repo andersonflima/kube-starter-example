@@ -1,0 +1,23 @@
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+Backend:
+  Service: {{ include "kube-starter.backendFullname" . }}:{{ .Values.backend.service.port }}
+  Health: /api/health
+
+Frontend:
+  Service: {{ include "kube-starter.frontendFullname" . }}:{{ .Values.frontend.service.port }}
+
+{{- if .Values.ingress.enabled }}
+Ingress:
+{{- range .Values.ingress.hosts }}
+  http://{{ .host }}{{ (index .paths 0).path }}
+{{- end }}
+{{- else }}
+Port-forward:
+  kubectl port-forward service/{{ include "kube-starter.frontendFullname" . }} -n {{ .Release.Namespace }} 8080:{{ .Values.frontend.service.port }}
+  curl http://localhost:8080/api/health
+{{- end }}
+
+Status:
+  kubectl get pods,svc,hpa,ingress -n {{ .Release.Namespace }}
