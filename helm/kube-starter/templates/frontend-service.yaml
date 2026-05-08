@@ -8,10 +8,8 @@ metadata:
 spec:
   type: {{ .Values.frontend.service.type }}
   selector:
-    app.kubernetes.io/instance: {{ .Release.Name }}
-    app.kubernetes.io/component: frontend
+    {{- include "kube-starter.selectorLabels" (dict "root" . "component" "frontend") | nindent 4 }}
   ports:
     - name: http
       port: {{ .Values.frontend.service.port }}
       targetPort: http
-

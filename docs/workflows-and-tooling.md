@@ -113,6 +113,16 @@ helm upgrade --install kube-starter ./helm/kube-starter \
   --create-namespace
 ```
 
+Com Ingress local:
+
+```bash
+helm upgrade --install kube-starter ./helm/kube-starter \
+  --namespace kube-starter \
+  --create-namespace \
+  --values helm/kube-starter/values.yaml \
+  --values helm/kube-starter/values-local.yaml
+```
+
 Com observabilidade:
 
 ```bash

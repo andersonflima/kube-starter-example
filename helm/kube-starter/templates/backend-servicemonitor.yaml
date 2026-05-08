@@ -15,8 +15,7 @@ spec:
       - {{ .Release.Namespace }}
   selector:
     matchLabels:
-      app.kubernetes.io/instance: {{ .Release.Name }}
-      app.kubernetes.io/component: backend
+      {{- include "kube-starter.selectorLabels" (dict "root" . "component" "backend") | nindent 6 }}
   endpoints:
     - port: http
       path: {{ .Values.monitoring.serviceMonitor.path }}

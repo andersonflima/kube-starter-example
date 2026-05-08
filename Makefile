@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: check build-images cluster-create images-load argocd-install platform-bootstrap up status smoke down helm-lint helm-template
+.PHONY: check build-images cluster-create images-load argocd-install platform-bootstrap up status smoke down helm-lint helm-template helm-install-local helm-uninstall
 
 check:
 	./scripts/check-tools.sh
@@ -44,4 +44,14 @@ helm-lint:
 	helm lint ./helm/kube-starter
 
 helm-template:
-	helm template kube-starter ./helm/kube-starter
+	helm template kube-starter ./helm/kube-starter --namespace kube-starter
+
+helm-install-local:
+	helm upgrade --install kube-starter ./helm/kube-starter \
+		--namespace kube-starter \
+		--create-namespace \
+		--values helm/kube-starter/values.yaml \
+		--values helm/kube-starter/values-local.yaml
+
+helm-uninstall:
+	helm uninstall kube-starter -n kube-starter
