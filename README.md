@@ -395,9 +395,14 @@ Com Ingress local:
 helm upgrade --install kube-starter ./helm/kube-starter \
   --namespace kube-starter \
   --create-namespace \
-  --set ingress.enabled=true \
-  --set ingress.className=nginx \
-  --set ingress.hosts[0].host=kube-starter.localhost
+  --values helm/kube-starter/values.yaml \
+  --values helm/kube-starter/values-local.yaml
+```
+
+Atalho equivalente:
+
+```bash
+make helm-install-local
 ```
 
 Com ServiceMonitor:
@@ -413,7 +418,7 @@ helm upgrade --install kube-starter ./helm/kube-starter \
 Remocao:
 
 ```bash
-helm uninstall kube-starter -n kube-starter
+make helm-uninstall
 ```
 
 ## GitOps Com Argo CD
